@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	val "github.com/go-playground/validator/v10/non-standard/validators"
+	"github.com/google/uuid"
 
 	"github.com/jackc/pgx/v5"
 
@@ -38,6 +40,9 @@ func ValidateStruct(s interface{}) []*ErrorResponse {
 	}
 	return errors
 }
+
+// How many people
+// Where are they from
 
 func main() {
 	err := godotenv.Load()
@@ -97,6 +102,78 @@ func main() {
 		conn.Exec(c.Context(), "INSERT INTO card_swipes (card_number, timestamp) VALUES ($1, CURRENT_TIMESTAMP);", request.CardNumber)
 
 		return c.SendStatus(fiber.StatusOK)
+	})
+
+	type Data struct {
+		UUID      string    `json:"uuid"`
+		Timestamp time.Time `json:"timestamp"`
+	}
+
+	app.Get("/data", func(c *fiber.Ctx) error {
+		var request struct {
+			Start    string `json:"start" xml:"start" form:"start" query:"start" validate:"required"`
+			End      string `json:"end" xml:"end" form:"end" query:"end" validate:"required"`
+			Password string `json:"pw" xml:"pw" form:"pw" query:"pw" validate:"required"`
+		}
+
+		if err := c.QueryParser(&request); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		{
+			errors := ValidateStruct(request)
+			if errors != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(errors)
+			}
+		}
+
+		if request.Password != password {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+
+		start, err := time.Parse(time.RFC3339, request.Start)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).SendString("Bad start time")
+		}
+
+		end, err := time.Parse(time.RFC3339, request.End)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).SendString("Bad end time")
+		}
+
+		rows, err := conn.Query(c.Context(), "SELECT * FROM card_swipes WHERE timestamp BETWEEN $1 and $2;", start, end)
+		if err != nil {
+			fmt.Println(err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		defer rows.Close()
+		var response []Data
+
+		m := make(map[string]string)
+
+		for rows.Next() {
+			var card string
+			var time time.Time
+			err = rows.Scan(&card, &time)
+			if err != nil {
+				panic(err)
+			}
+
+			if m[card] == "" {
+				m[card] = uuid.NewString()
+			}
+
+			response = append(response, Data{UUID: m[card], Timestamp: time})
+		}
+		err = rows.Err()
+		if err != nil {
+			panic(err)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(response)
 	})
 
 	app.Listen(":3000")
