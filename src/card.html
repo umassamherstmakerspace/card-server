@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Logs</title>
+    <style>
+        .form-container {
+            display: flex;
+            flex-direction: column;
+            width: 300px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+    </style>
+    <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div class="form-container">
+        <div class="form-group">
+            <label for="url-base-input">URL Base</label>
+            <input type="text" id="url-base-input" name="URL Base">
+        </div>
+        <div class="form-group">
+            <label for="password-input">Password</label>
+            <input type="password" id="password-input" name="Password">
+        </div>
+        <div class="form-group">
+            <label for="show-password-checkbox">Show Password</label>
+            <input type="checkbox" id="show-password-checkbox" name="Show Password">
+        </div>
+        <div class="form-group">
+            <label for="start-select">Start Date</label>
+            <input type="datetime-local" id="start-select" name="Start Date">
+        </div>
+        <div class="form-group">
+            <label for="end-select">End Date</label>
+            <input type="datetime-local" id="end-select" name="End Date">
+        </div>
+        <div class="form-group">
+            <button id="get-data">Get Data</button>
+        </div>
+    </div>
+    <div>
+        <div id="dataGrid"></div>
+        <canvas id="dateChart"></canvas>
+        <canvas id="hourChart"></canvas>
+        <canvas id="swipeChart"></canvas>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
+    <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+    <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+
+    <script type="module">
+        const urlBaseInput = document.getElementById("url-base-input");
+        urlBaseInput.value = localStorage.getItem("url_base") || window.location.origin;
+        localStorage.setItem("url_base", urlBaseInput.value);
+        urlBaseInput.addEventListener("input", () => {
+            localStorage.setItem("url_base", urlBaseInput.value);
+        });
+
+        const passwordInput = document.getElementById("password-input");
+        passwordInput.value = localStorage.getItem("password") || "";
+        localStorage.setItem("password", passwordInput.value);
+        passwordInput.addEventListener("input", () => {
+            localStorage.setItem("password", passwordInput.value);
+        });
+
+        const showPasswordCheckbox = document.getElementById("show-password-checkbox");
+        showPasswordCheckbox.addEventListener("input", () => {
+            passwordInput.type = showPasswordCheckbox.checked ? "input" : "password";
+        });
+
+        const startTimeSelect = document.getElementById("start-select");
+        startTimeSelect.value = localStorage.getItem("start");
+        startTimeSelect.addEventListener("input", () => {
+            localStorage.setItem("start", startTimeSelect.value);
+        });
+
+        const endTimeSelect = document.getElementById("end-select");
+        endTimeSelect.value = localStorage.getItem("end");
+        endTimeSelect.addEventListener("input", () => {
+            localStorage.setItem("end", endTimeSelect.value);
+        });
+
+        const dateChart = new Chart(document.getElementById('dateChart'), {
+            type: 'bar',
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Card Swipes For Day'
+                    },
+                    zoom: {
+                        zoom: {
+                            wheel: {
+                                enabled: true,
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'x',
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: "x",
+                        },
+                    }
+                }
+            },
+        });
+
+        const hourChart = new Chart(document.getElementById('hourChart'), {
+            type: 'bar',
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Card Swipes For Each Hour Summed Each Day'
+                    }
+                }
+            },
+        });
+
+        const swipeChart = new Chart(document.getElementById('swipeChart'), {
+            type: 'bar',
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Card Swipes Per Person'
+                    }
+                }
+            },
+        });
+
+        async function getData() {
+            const start = new Date(startTimeSelect.value);
+            const end = new Date(endTimeSelect.value);
+            const res = await fetch(`${urlBaseInput.value}/data?pw=${passwordInput.value}&start=${start.toISOString()}&end=${end.toISOString()}`);
+            const data = (await res.json()).map((v) => {
+                v.timestamp = new Date(v.timestamp);
+                return v;
+            });
+
+            const uuidSet = new Set();
+            const hours = [];
+            const hoursUnique = [];
+            for (let i = 0; i < 24; i++) {
+                hours.push(0);
+                hoursUnique.push(new Set());
+            }
+
+            const dateObject = {};
+            const dateUniqueObject = {};
+
+            const swipeObject = {};
+            const swipeUniqueObject = {}; 
+
+            for (const i in data) {
+                const d = data[i];
+                uuidSet.add(d.uuid)
+                const dateKey = `${d.timestamp.getFullYear()}-${d.timestamp.getMonth()}-${d.timestamp.getDate()}`;
+                if (dateObject[dateKey] == undefined) dateObject[dateKey] = 0;
+                if (dateUniqueObject[dateKey] == undefined) dateUniqueObject[dateKey] = new Set();
+                dateObject[dateKey] += 1;
+                dateUniqueObject[dateKey].add(d.uuid);
+                hours[d.timestamp.getHours()] += 1;
+                hoursUnique[d.timestamp.getHours()].add(dateKey + d.uuid);
+                if (swipeObject[d.uuid] == undefined) swipeObject[d.uuid] = 0;
+                if (swipeUniqueObject[d.uuid] == undefined) swipeUniqueObject[d.uuid] = new Set();
+                swipeObject[d.uuid] += 1;
+                swipeUniqueObject[d.uuid].add(dateKey);
+            }
+
+            const dateKeys = Object.keys(dateObject);
+
+            const maxSwipes = Math.max(...Object.values(swipeObject));
+            const maxUniqueSwipes = Math.max(...Object.values(swipeUniqueObject));
+
+            new gridjs.Grid({
+                columns: ["Data", "Unique Swipes", "Total Swipes"],
+                data: [
+                    ["Total", uuidSet.size, data.length],
+                    ["Day Average", uuidSet.size / dateKeys.length, data.length / dateKeys.length],
+                    ["Day Maximum", dateKeys.reduce((acc, v) => Math.max(acc, dateUniqueObject[v].size), 0), dateKeys.reduce((acc, v) => Math.max(acc, dateObject[v]), 0)],
+                ]
+            }).render(document.getElementById("dataGrid"));
+
+            dateChart.data = {
+                labels: dateKeys,
+                datasets: [
+                    {
+                        label: 'Number of Swipes',
+                        data: dateKeys.map((k) => dateObject[k]),
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Number of Unique Swipes',
+                        data: dateKeys.map((k) => dateUniqueObject[k].size),
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            dateChart.update();
+
+            hourChart.data = {
+                labels: [...Array(24).keys()],
+                datasets: [
+                    {
+                        label: 'Number of Swipes',
+                        data: hours,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Number of Unique Swipes',
+                        data: hoursUnique.map((v) => v.size),
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            hourChart.update();
+
+            const swipeHistogram = new Array(maxSwipes + 1).fill(0);
+            const swipeHistogramUnique = new Array(maxSwipes + 1).fill(0);
+
+            for (const s in swipeObject) {
+                swipeHistogram[swipeObject[s]] += 1;
+                swipeHistogramUnique[swipeUniqueObject[s].size] += 1;
+            }
+
+            swipeChart.data = {
+                labels: [...Array(maxSwipes + 1).keys()],
+                datasets: [
+                    {
+                        label: 'Number of Swipes',
+                        data: swipeHistogram,
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Number of Unique Swipes',
+                        data: swipeHistogramUnique,
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            swipeChart.update();
+        }
+
+        const getDataButton = document.getElementById("get-data");
+        getDataButton.addEventListener("click", getData);
+        getData();
+    </script>
+</body>
+
+</html>

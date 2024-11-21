@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -15,9 +17,15 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
 
 	"github.com/joho/godotenv"
 )
+
+// Embed a single file
+//
+//go:embed card.html
+var cardFile embed.FS
 
 var validate = validator.New()
 
@@ -74,6 +82,10 @@ func main() {
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Welcome to the Card Server!")
+	})
+
+	app.Get("/card", func(c *fiber.Ctx) error {
+		return filesystem.SendFile(c, http.FS(cardFile), "card.html")
 	})
 
 	password := os.Getenv("CARD_PASSWORD")
