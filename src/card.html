@@ -49,6 +49,7 @@
         </div>
         <div class="form-group">
             <button id="get-data">Get Data</button>
+            <button id="download">Download</button>
         </div>
     </div>
     <div>
@@ -94,6 +95,13 @@
         endTimeSelect.addEventListener("input", () => {
             localStorage.setItem("end", endTimeSelect.value);
         });
+
+        const dataGrid = new gridjs.Grid({
+                columns: ["Data", "Unique Swipes", "Total Swipes"],
+                data: []
+            });
+
+        dataGrid.render(document.getElementById("dataGrid"));
 
         const dateChart = new Chart(document.getElementById('dateChart'), {
             type: 'bar',
@@ -164,14 +172,24 @@
             },
         });
 
+        let csvData = "";
+
         async function getData() {
             const start = new Date(startTimeSelect.value);
             const end = new Date(endTimeSelect.value);
             const res = await fetch(`${urlBaseInput.value}/data?pw=${passwordInput.value}&start=${start.toISOString()}&end=${end.toISOString()}`);
-            const data = (await res.json()).map((v) => {
+            const data = (await res.json() || []).map((v) => {
                 v.timestamp = new Date(v.timestamp);
                 return v;
             });
+
+
+            csvData = "uuid,timestamp";
+            for (const i in data) {
+                const d = data[i];
+
+                csvData += `\n${d.uuid},${d.timestamp.toISOString()}`
+            }
 
             const uuidSet = new Set();
             const hours = [];
@@ -205,17 +223,15 @@
 
             const dateKeys = Object.keys(dateObject);
 
-            const maxSwipes = Math.max(...Object.values(swipeObject));
-            const maxUniqueSwipes = Math.max(...Object.values(swipeUniqueObject));
+            const maxSwipes = Math.max(...Object.values(swipeObject), 0);
+            const maxUniqueSwipes = Math.max(...Object.values(swipeUniqueObject), 0);
 
-            new gridjs.Grid({
-                columns: ["Data", "Unique Swipes", "Total Swipes"],
+            dataGrid.updateConfig({
                 data: [
                     ["Total", uuidSet.size, data.length],
                     ["Day Average", uuidSet.size / dateKeys.length, data.length / dateKeys.length],
                     ["Day Maximum", dateKeys.reduce((acc, v) => Math.max(acc, dateUniqueObject[v].size), 0), dateKeys.reduce((acc, v) => Math.max(acc, dateObject[v]), 0)],
-                ]
-            }).render(document.getElementById("dataGrid"));
+            ]}).forceRender();
 
             dateChart.data = {
                 labels: dateKeys,
@@ -265,12 +281,12 @@
                 labels: [...Array(maxSwipes + 1).keys()],
                 datasets: [
                     {
-                        label: 'Number of Swipes',
+                        label: 'People With Swipes',
                         data: swipeHistogram,
                         borderWidth: 1
                     },
                     {
-                        label: 'Number of Unique Swipes',
+                        label: 'People With Unique Swipes',
                         data: swipeHistogramUnique,
                         borderWidth: 1
                     }
@@ -280,8 +296,18 @@
             swipeChart.update();
         }
 
+        function download() {
+            const link = window.document.createElement("a");
+            link.setAttribute("href", "data:text/csv;charset=utf-8,%EF%BB%BF" + encodeURI(csvData));
+            link.setAttribute("download", "card_data.csv");
+            link.click();
+            link.remove();
+        }
+
         const getDataButton = document.getElementById("get-data");
         getDataButton.addEventListener("click", getData);
+        const downloadButton = document.getElementById("download");
+        downloadButton.addEventListener("click", download);
         getData();
     </script>
 </body>
