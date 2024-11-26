@@ -214,7 +214,6 @@
                 dateObject[dateKey] += 1;
                 dateUniqueObject[dateKey].add(d.uuid);
                 hours[d.timestamp.getHours()] += 1;
-                hoursUnique[d.timestamp.getHours()].add(dateKey + d.uuid);
                 if (swipeObject[d.uuid] == undefined) swipeObject[d.uuid] = 0;
                 if (swipeUniqueObject[d.uuid] == undefined) swipeUniqueObject[d.uuid] = new Set();
                 swipeObject[d.uuid] += 1;
@@ -229,7 +228,7 @@
             dataGrid.updateConfig({
                 data: [
                     ["Total", uuidSet.size, data.length],
-                    ["Day Average", uuidSet.size / dateKeys.length, data.length / dateKeys.length],
+                    ["Day Average", dateKeys.reduce((acc, k) => dateUniqueObject[k].size + acc, 0) / dateKeys.length, dateKeys.reduce((acc, k) => dateObject[k] + acc, 0) / dateKeys.length],
                     ["Day Maximum", dateKeys.reduce((acc, v) => Math.max(acc, dateUniqueObject[v].size), 0), dateKeys.reduce((acc, v) => Math.max(acc, dateObject[v]), 0)],
             ]}).forceRender();
 
